@@ -37,6 +37,7 @@ async def get_embeddings(request: Request):
         return JSONResponse(status_code=500, content={"error": "Internal Server Error"})
 
 @app.post("/color-histograms")
+
 async def get_color_histograms(request: Request):
     try:
         data = await request.json()
@@ -47,6 +48,7 @@ async def get_color_histograms(request: Request):
 
         hue_bins = 16
         sat_bins = 4
+        dominant_n = 4
 
         start_time = time.perf_counter()
         results = []
@@ -64,11 +66,32 @@ async def get_color_histograms(request: Request):
             img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
             hsv_image = cv2.cvtColor(img_cv, cv2.COLOR_BGR2HSV)
 
+            # Histograma completo
             hist = cv2.calcHist([hsv_image], [0, 1], None, [hue_bins, sat_bins], [0, 180, 0, 256])
             hist = cv2.normalize(hist, hist).flatten()
             histogram_vector = hist.tolist()
 
-            results.append({"id": idx, "embedding": histogram_vector})
+            # Calcular histograma reducido
+            hue_sums = []
+            for h in range(hue_bins):
+                start_idx = h * sat_bins
+                hue_sum = float(np.sum(hist[start_idx:start_idx + sat_bins]))  # Forzar tipo float
+                hue_sums.append((h, hue_sum))
+
+            # Obtener los índices de los hues más dominantes
+            top_hues = sorted(hue_sums, key=lambda x: x[1], reverse=True)[:dominant_n]
+
+            reduced_vector = [0.0] * len(hist)
+            for hue_index, _ in top_hues:
+                start_idx = hue_index * sat_bins
+                for s in range(sat_bins):
+                    reduced_vector[start_idx + s] = float(hist[start_idx + s])  # Forzar float
+
+            results.append({
+                "id": idx,
+                "embedding_full": histogram_vector,
+                "embedding_dominant": reduced_vector
+            })
 
         print(f"⏳ [Get Color Histograms] Tiempo de ejecución: {time.perf_counter() - start_time:.4f} segundos")
 
